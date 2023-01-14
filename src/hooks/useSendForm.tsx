@@ -4,7 +4,9 @@ import {
   useCallback,
   useContext,
   createContext,
+  useState,
 } from "react";
+import { ampli } from "../ampli";
 import { ethers } from "ethers";
 import {
   ChainId,
@@ -19,6 +21,7 @@ import {
   ChainInfo,
   ChainInfoList,
   isSupportedChainId,
+  getChainInfo,
 } from "utils";
 
 import { usePrevious, useConnection } from "hooks";
@@ -441,12 +444,25 @@ function useSendFormManager(): SendFormManagerContext {
     }
   }, [chainId, previousChainId, config]);
 
-  const setTokenSymbol = useCallback((tokenSymbol: string) => {
-    dispatch({
-      type: ActionType.SET_TOKEN,
-      payload: tokenSymbol,
-    });
-  }, []);
+  const setTokenSymbol = useCallback(
+    (tokenSymbol: string) => {
+      dispatch({
+        type: ActionType.SET_TOKEN,
+        payload: tokenSymbol,
+      });
+      const numberOfTokens = state.availableTokens.length;
+      const indexOfToken = state.availableTokens.findIndex(
+        (token) => token.symbol.toLowerCase() === tokenSymbol.toLowerCase()
+      );
+      ampli.tokenSelected({
+        tokenSymbol: tokenSymbol,
+        tokenListIndex: indexOfToken.toString(),
+        tokenListLength: numberOfTokens.toString(),
+        default: false,
+      });
+    },
+    [state.availableTokens]
+  );
   const setAmount = useCallback((amount: ethers.BigNumber) => {
     dispatch({
       type: ActionType.SET_AMOUNT,
@@ -458,11 +474,23 @@ function useSendFormManager(): SendFormManagerContext {
       type: ActionType.SET_TO_CHAIN,
       payload: toChain,
     });
+    const chainInfo = getChainInfo(toChain);
+    ampli.toChainSelected({
+      toChainId: chainInfo.chainId.toString(),
+      chainName: chainInfo.name,
+      default: false,
+    });
   }, []);
   const setFromChain = useCallback((fromChain: ChainId) => {
     dispatch({
       type: ActionType.SET_FROM_CHAIN,
       payload: fromChain,
+    });
+    const chainInfo = getChainInfo(fromChain);
+    ampli.fromChainSelected({
+      fromChainId: chainInfo.chainId.toString(),
+      chainName: chainInfo.name,
+      default: false,
     });
   }, []);
   const setToAddress = useCallback((toAddress: string) => {
@@ -477,6 +505,77 @@ function useSendFormManager(): SendFormManagerContext {
       payload: error,
     });
   }, []);
+
+  // Amplitude tracking for the fromChain id and name
+  const [previousFromChain, setPreviousFromChain] = useState<
+    ChainId | undefined
+  >(undefined);
+  useEffect(() => {
+    const fromChain = state.fromChain;
+    if (fromChain && previousFromChain === undefined) {
+      const chainInfo = getChainInfo(fromChain);
+      ampli.fromChainSelected({
+        fromChainId: chainInfo.chainId.toString(),
+        chainName: chainInfo.name,
+        default: previousFromChain === undefined,
+      });
+      setPreviousFromChain(fromChain);
+    }
+  }, [state.fromChain, previousFromChain]);
+
+  // Amplitude tracking for the toChain id and name
+  const [previousToChain, setPreviousToChain] = useState<ChainId | undefined>(
+    undefined
+  );
+  useEffect(() => {
+    const toChain = state.toChain;
+    if (toChain && toChain === undefined) {
+      const chainInfo = getChainInfo(toChain);
+      ampli.toChainSelected({
+        toChainId: chainInfo.chainId.toString(),
+        chainName: chainInfo.name,
+        default: previousToChain === undefined,
+      });
+      setPreviousToChain(toChain);
+    }
+  }, [state.toChain, previousToChain]);
+
+  // Amplitude tracking for the toAccount address
+  const [previousToAccount, setPreviousToAccount] = useState<
+    string | undefined
+  >(undefined);
+  useEffect(() => {
+    const address = state.toAddress;
+    if (
+      address &&
+      address !== previousToAccount &&
+      address !== connectedAccount
+    ) {
+      ampli.toAccountChanged({ toWalletAddress: address });
+      setPreviousToAccount(address);
+    }
+  }, [state.toAddress, previousToAccount, connectedAccount]);
+
+  // Amplitude tracking for the token symbol
+  const [previousTokenSymbol, setPreviousTokenSymbol] = useState<
+    string | undefined
+  >(undefined);
+  useEffect(() => {
+    const tokenSymbol = state.tokenSymbol;
+    if (tokenSymbol && previousTokenSymbol === undefined) {
+      const numberOfTokens = state.availableTokens.length;
+      const indexOfToken = state.availableTokens.findIndex(
+        (token) => token.symbol.toLowerCase() === tokenSymbol.toLowerCase()
+      );
+      ampli.tokenSelected({
+        tokenSymbol: tokenSymbol,
+        tokenListIndex: indexOfToken.toString(),
+        tokenListLength: numberOfTokens.toString(),
+        default: previousTokenSymbol === undefined,
+      });
+      setPreviousTokenSymbol(tokenSymbol);
+    }
+  }, [state.tokenSymbol, state.availableTokens, previousTokenSymbol]);
 
   return {
     ...state,
